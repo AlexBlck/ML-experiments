@@ -1,160 +1,158 @@
+"""Showcase of a very basic 2d platformer
+The red girl sprite is taken from Sithjester's RMXP Resources:
+http://untamed.wild-refuge.net/rmxpresources.php?characters
+.. note:: The code of this example is a bit messy. If you adapt this to your 
+    own code you might want to structure it a bit differently.
+"""
+
+__docformat__ = "reStructuredText"
+
+import sys,math
+
 import pygame
 from pygame.locals import *
 from pygame.color import *
-
+    
 import pymunk
-from pymunk import Vec2d
+from pymunk.vec2d import Vec2d
+import pymunk.pygame_util 
+
+import os
+
+current_path = os.path.dirname(__file__)
+
+def cpfclamp(f, min_, max_):
+    """Clamp f between min and max"""
+    return min(max(f, min_), max_)
+
+def cpflerpconst(f1, f2, d):
+    """Linearly interpolate from f1 to f2 by no more than d."""
+    return f1 + cpfclamp(f2 - f1, -d, d)
 
 
-X,Y = 0,1
-### Physics collision types
-COLLTYPE_DEFAULT = 0
-COLLTYPE_MOUSE = 1
-COLLTYPE_BALL = 2
 
-def flipy(y):
-    """Small hack to convert chipmunk physics to pygame coordinates"""
-    return -y+600
-
-def mouse_coll_func(arbiter, space, data):
-    """Simple callback that increases the radius of circles touching the mouse"""
-    s1,s2 = arbiter.shapes
-    s2.unsafe_set_radius(s2.radius + 0.15)
-    return False
+width, height = 690,400
+fps = 60
+dt = 1./fps
+PLAYER_VELOCITY = 20
 
 def main():
-            
+
+    ### PyGame init
     pygame.init()
-    screen = pygame.display.set_mode((600, 600))
+    screen = pygame.display.set_mode((width,height)) 
+
     clock = pygame.time.Clock()
     running = True
+    font = pygame.font.SysFont("Arial", 16)
+    img = pygame.image.load(current_path + "/xmasgirl1.png")
     
     ### Physics stuff
-    space = pymunk.Space()
-    space.gravity = 0.0, -900.0
-    
-    ## Balls
-    balls = []
-    
-    ### Mouse
-    mouse_body = pymunk.Body(body_type=pymunk.Body.KINEMATIC)
-    mouse_shape = pymunk.Circle(mouse_body, 3, (0,0))
-    mouse_shape.collision_type = COLLTYPE_MOUSE
-    space.add(mouse_shape)
+    space = pymunk.Space()   
+    space.gravity = 0, 0
+    draw_options = pymunk.pygame_util.DrawOptions(screen)
 
-    space.add_collision_handler(COLLTYPE_MOUSE, COLLTYPE_BALL).pre_solve=mouse_coll_func   
+    # box walls 
+    static = [pymunk.Segment(space.static_body, (10, 50), (300, 50), 30)
+                , pymunk.Segment(space.static_body, (300, 50), (325, 50), 30)
+                , pymunk.Segment(space.static_body, (325, 50), (350, 50), 30)
+                , pymunk.Segment(space.static_body, (350, 50), (375, 50), 30)
+                , pymunk.Segment(space.static_body, (375, 50), (680, 50), 30)
+                , pymunk.Segment(space.static_body, (680, 50), (680, 370), 30)
+                , pymunk.Segment(space.static_body, (680, 370), (10, 370), 30)
+                , pymunk.Segment(space.static_body, (10, 370), (10, 50), 30)
+                ]  
+    static[1].color = pygame.color.THECOLORS['red']
+    static[2].color = pygame.color.THECOLORS['green']
+    static[3].color = pygame.color.THECOLORS['red']
     
-    ### Static line
-    line_point1 = None
-    static_lines = []
-    run_physics = True
+    # rounded shape
+    rounded = [pymunk.Segment(space.static_body, (500, 50), (520, 60), 3)
+                , pymunk.Segment(space.static_body, (520, 60), (540, 80), 3)
+                , pymunk.Segment(space.static_body, (540, 80), (550, 100), 3)
+                , pymunk.Segment(space.static_body, (550, 100), (550, 150), 3)
+                ]
+                
+    # static platforms
+    platforms = [pymunk.Segment(space.static_body, (170, 50), (270, 150), 3)
+                , pymunk.Segment(space.static_body, (270, 100), (300, 100), 5)
+                , pymunk.Segment(space.static_body, (400, 150), (450, 150), 3)
+                , pymunk.Segment(space.static_body, (400, 200), (450, 200), 3)
+                , pymunk.Segment(space.static_body, (220, 200), (300, 200), 3)
+                , pymunk.Segment(space.static_body, (50, 250), (200, 250), 3)
+                , pymunk.Segment(space.static_body, (10, 370), (50, 250), 3)
+                ]
+    
+    for s in static + platforms+rounded:
+        s.friction = 1.
+        s.group = 1
+    space.add(static, platforms+rounded)
+    
+    frame_number = 0
+    
+    
+    # player
+    body = pymunk.Body(1, pymunk.inf)
+    body.position = 100,100
+    
+    
+    feet = pymunk.Circle(body, 10, (0, 0))
+    # Since we use the debug draw we need to hide these circles. To make it 
+    # easy we just set their color to black.
+    
+    space.add(body, feet)
 
+
+    
     while running:
+            
         for event in pygame.event.get():
-            if event.type == QUIT:
-                running = False
-            elif event.type == KEYDOWN and event.key == K_ESCAPE:
+            if event.type == QUIT or \
+                event.type == KEYDOWN and (event.key in [K_ESCAPE, K_q]):  
                 running = False
             elif event.type == KEYDOWN and event.key == K_p:
-                pygame.image.save(screen, "balls_and_lines.png")
-            elif event.type == MOUSEBUTTONDOWN and event.button == 1:
-                p = event.pos[X], flipy(event.pos[Y])
-                body = pymunk.Body(10, 100)
-                body.position = p
-                shape = pymunk.Circle(body, 10, (0,0))
-                shape.friction = 0.5
-                shape.collision_type = COLLTYPE_BALL
-                space.add(body, shape)
-                balls.append(shape)
+                pygame.image.save(screen, "platformer.png")
                 
-            elif event.type == MOUSEBUTTONDOWN and event.button == 3: 
-                if line_point1 is None:
-                    line_point1 = Vec2d(event.pos[X], flipy(event.pos[Y]))
-            elif event.type == MOUSEBUTTONUP and event.button == 3: 
-                if line_point1 is not None:
-                    
-                    line_point2 = Vec2d(event.pos[X], flipy(event.pos[Y]))
-                    body = pymunk.Body(body_type=pymunk.Body.STATIC)
-                    shape= pymunk.Segment(body, line_point1, line_point2, 0.0)
-                    shape.friction = 0.99
-                    space.add(shape)
-                    static_lines.append(shape)
-                    line_point1 = None
-            
-            elif event.type == KEYDOWN and event.key == K_SPACE:    
-                run_physics = not run_physics
-        
-        p = pygame.mouse.get_pos()
-        mouse_pos = Vec2d(p[X],flipy(p[Y]))
-        mouse_body.position = mouse_pos
+        # Target horizontal velocity of player
+        target_vx = 0
+        target_vy = 0
+
+        keys = pygame.key.get_pressed()
+        if (keys[K_LEFT]):
+            target_vx -= PLAYER_VELOCITY
+        if (keys[K_RIGHT]):
+            target_vx += PLAYER_VELOCITY
+        if (keys[K_DOWN]):
+            target_vy -= PLAYER_VELOCITY
+        if (keys[K_UP]):
+            target_vy += PLAYER_VELOCITY
+
+        body.velocity = target_vx, target_vy
         
         
-        if pygame.key.get_mods() & KMOD_SHIFT and pygame.mouse.get_pressed()[0]:
-            body = pymunk.Body(10, 10)
-            body.position = mouse_pos
-            shape = pymunk.Circle(body, 10, (0,0))
-            shape.collision_type = COLLTYPE_BALL
-            space.add(body, shape)
-            balls.append(shape)
-       
-        ### Update physics
-        if run_physics:
-            dt = 1.0/60.0
-            for x in range(1):
-                space.step(dt)
-            
+        ### Clear screen
+        screen.fill(pygame.color.THECOLORS["black"])
+        
+        
         ### Draw stuff
-        screen.fill(THECOLORS["white"])
+        space.debug_draw(draw_options)
+        
 
-        # Display some text
-        font = pygame.font.Font(None, 16)
-        text = """LMB: Create ball
-LMB + Shift: Create many balls
-RMB: Drag to create wall, release to finish
-Space: Pause physics simulation"""
-        y = 5
-        for line in text.splitlines():
-            text = font.render(line, 1,THECOLORS["black"])
-            screen.blit(text, (5,y))
-            y += 10
-
-        for ball in balls:           
-            r = ball.radius
-            v = ball.body.position
-            rot = ball.body.rotation_vector
-            p = int(v.x), int(flipy(v.y))
-            p2 = Vec2d(rot.x, -rot.y) * r * 0.9
-            pygame.draw.circle(screen, THECOLORS["blue"], p, int(r), 2)
-            pygame.draw.line(screen, THECOLORS["red"], p, p+p2)
-
-        if line_point1 is not None:
-            p1 = line_point1.x, flipy(line_point1.y)
-            p2 = mouse_pos.x, flipy(mouse_pos.y)
-            pygame.draw.lines(screen, THECOLORS["black"], False, [p1,p2])
-
-        for line in static_lines:
-            body = line.body
-            
-            pv1 = body.position + line.a.rotated(body.angle)
-            pv2 = body.position + line.b.rotated(body.angle)
-            p1 = pv1.x, flipy(pv1.y)
-            p2 = pv2.x, flipy(pv2.y)
-            pygame.draw.lines(screen, THECOLORS["lightgray"], False, [p1,p2])
-
-        ### Flip screen
+        
+        # Info and flip screen
+        screen.blit(font.render("fps: " + str(clock.get_fps()), 1, THECOLORS["white"]), (0,0))
+        screen.blit(font.render("Move with Left/Right, jump with Up, press again to double jump", 1, THECOLORS["darkgrey"]), (5,height - 35))
+        screen.blit(font.render("Press ESC or Q to quit", 1, THECOLORS["darkgrey"]), (5,height - 20))
+        
+       
         pygame.display.flip()
-        clock.tick(50)
-        pygame.display.set_caption("fps: " + str(clock.get_fps()))
+        frame_number += 1
         
+        ### Update physics
+        
+        space.step(dt)
+        
+        clock.tick(fps)
+
 if __name__ == '__main__':
-    doprof = 0
-    if not doprof: 
-        main()
-    else:
-        import cProfile, pstats
-        
-        prof = cProfile.run("main()", "profile.prof")
-        stats = pstats.Stats("profile.prof")
-        stats.strip_dirs()
-        stats.sort_stats('cumulative', 'time', 'calls')
-        stats.print_stats(30)
+    sys.exit(main())
