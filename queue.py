@@ -12,6 +12,7 @@ COLLTYPE_DEFAULT = 0
 COLLTYPE_MOUSE = 1
 COLLTYPE_BALL = 2
 
+kek!
 
 def flipy(y):
     """Small hack to convert chipmunk physics to pygame coordinates"""
