@@ -1,7 +1,3 @@
-"""This example lets you dynamically create static walls and dynamic balls
-"""
-__docformat__ = "reStructuredText"
-
 import pygame
 from pygame.locals import *
 from pygame.color import *
